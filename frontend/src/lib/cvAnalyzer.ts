@@ -60,7 +60,7 @@ export async function analyzeCVs(
   return results.sort((a, b) => b.score - a.score);
 }
 
-async function extractCVText(file: File): Promise<string> {
+export async function extractCVText(file: File): Promise<string> {
   if (file.type === "application/pdf") {
     return extractPDFText(file);
   }

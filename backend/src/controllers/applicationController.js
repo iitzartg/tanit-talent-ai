@@ -3,10 +3,11 @@ const Job = require("../models/Job");
 const User = require("../models/User");
 const Profile = require("../models/Profile");
 const { formatApplication, formatJob, formatUser, formatProfile } = require("../utils/formatters");
+const { computeApplicationAiScore } = require("../services/cvScoringService");
 
 const applyToJob = async (req, res, next) => {
   try {
-    const { jobId } = req.body;
+    const { jobId, cvPath, cvText } = req.body;
     const job = await Job.findById(jobId);
     if (!job || job.status !== "active") {
       return res.status(404).json({ message: "Job not found or not open for applications." });
@@ -20,11 +21,21 @@ const applyToJob = async (req, res, next) => {
       return res.status(409).json({ message: "You already applied to this job." });
     }
 
+    const profile = await Profile.findOne({ userId: req.user._id });
+    const cvTextSnapshot = typeof cvText === "string" ? cvText.trim().slice(0, 100000) : "";
+    const aiScore = await computeApplicationAiScore({
+      job,
+      profile,
+      candidateTextOverride: cvTextSnapshot,
+    });
+
     const application = await Application.create({
       jobId: job._id,
       candidateId: req.user._id,
       status: "pending",
-      aiScore: 0,
+      aiScore,
+      cvPath: typeof cvPath === "string" ? cvPath.trim() : "",
+      cvTextSnapshot,
     });
 
     return res.status(201).json({

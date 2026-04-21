@@ -26,6 +26,7 @@ router.put(
     body("skills").optional().isArray().withMessage("Skills must be an array."),
     body("skills.*").optional().isString().withMessage("Each skill must be a string."),
     body("cvPath").optional().isString().withMessage("cvPath must be a string."),
+    body("cvText").optional().isString().isLength({ max: 100000 }).withMessage("cvText is too long."),
   ],
   validateRequest,
   updateCurrentUserProfile
@@ -71,6 +72,7 @@ router.put(
     body("skills").optional().isArray().withMessage("Skills must be an array."),
     body("skills.*").optional().isString().withMessage("Each skill must be a string."),
     body("cvPath").optional().isString().withMessage("cvPath must be a string."),
+    body("cvText").optional().isString().isLength({ max: 100000 }).withMessage("cvText is too long."),
   ],
   validateRequest,
   updateUser

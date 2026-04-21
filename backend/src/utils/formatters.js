@@ -22,6 +22,7 @@ function formatProfile(profileDoc) {
     bio: p.bio ?? "",
     skills: Array.isArray(p.skills) ? p.skills : [],
     cvPath: p.cvPath ?? "",
+    cvText: p.cvText ?? "",
     updatedAt: p.updatedAt,
   };
 }
@@ -53,6 +54,7 @@ function formatApplication(applicationDoc) {
     candidateId: String(a.candidateId),
     status: a.status,
     aiScore: typeof a.aiScore === "number" ? a.aiScore : 0,
+    cvPath: a.cvPath ?? "",
     appliedAt: a.createdAt,
   };
 }

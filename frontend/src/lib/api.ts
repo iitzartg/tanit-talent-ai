@@ -5,6 +5,7 @@ export interface ApiProfile {
   bio: string;
   skills: string[];
   cvPath: string;
+  cvText: string;
   updatedAt: string;
 }
 
@@ -29,6 +30,7 @@ export interface ApiApplication {
   candidateId: string;
   status: "pending" | "reviewed" | "shortlisted" | "rejected";
   aiScore: number;
+  cvPath?: string;
   appliedAt: string;
   job: ApiJob | null;
   candidate?: AuthUser | null;
@@ -99,7 +101,7 @@ export const api = {
 
   getMe: () => request<{ user: AuthUser; profile: ApiProfile | null }>("/api/users/me", { auth: true }),
 
-  updateMe: (payload: { name?: string; bio?: string; skills?: string[]; cvPath?: string }) =>
+  updateMe: (payload: { name?: string; bio?: string; skills?: string[]; cvPath?: string; cvText?: string }) =>
     request<{ message: string; user: AuthUser; profile: ApiProfile | null }>("/api/users/me", {
       method: "PUT",
       auth: true,
@@ -126,11 +128,36 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  applyToJob: (jobId: string) =>
+  updateJob: (
+    id: string,
+    payload: {
+      title: string;
+      company: string;
+      location: string;
+      type: ApiJob["type"];
+      salary: string;
+      description: string;
+      requirements?: string[];
+      status?: ApiJob["status"];
+    },
+  ) =>
+    request<{ message: string; job: ApiJob }>(`/api/jobs/${id}`, {
+      method: "PUT",
+      auth: true,
+      body: JSON.stringify(payload),
+    }),
+
+  deleteJob: (id: string) =>
+    request<{ message: string }>(`/api/jobs/${id}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+
+  applyToJob: (payload: { jobId: string; cvPath: string; cvText: string }) =>
     request<{ message: string; application: ApiApplication }>("/api/applications", {
       method: "POST",
       auth: true,
-      body: JSON.stringify({ jobId }),
+      body: JSON.stringify(payload),
     }),
 
   getMyApplications: () =>

@@ -15,7 +15,11 @@ router.post(
   "/",
   protect,
   authorizeRoles("candidat"),
-  [body("jobId").isMongoId().withMessage("A valid jobId is required.")],
+  [
+    body("jobId").isMongoId().withMessage("A valid jobId is required."),
+    body("cvPath").trim().isLength({ min: 1 }).withMessage("CV file name is required."),
+    body("cvText").isString().isLength({ min: 50, max: 100000 }).withMessage("Valid CV content is required."),
+  ],
   validateRequest,
   applyToJob
 );
