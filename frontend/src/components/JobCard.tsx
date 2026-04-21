@@ -29,7 +29,8 @@ const JobCard = ({
       : user.role === "recruteur"
         ? "/recruiter"
         : "/candidate";
-  const ctaLabel = applyLabel || (!user ? "Apply" : "Go to Dashboard");
+  const ctaLabel =
+    applyLabel || (user?.role === "candidat" || !user ? "Apply" : "Go to Dashboard");
 
   const typeColors: Record<string, string> = {
     "Full-time": "bg-success/10 text-success border-success/20",

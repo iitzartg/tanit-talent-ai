@@ -4,23 +4,45 @@ import JobCard from "@/components/JobCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, MapPin, Filter } from "lucide-react";
 import type { Job } from "@/data/mockData";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { api } from "@/lib/api";
+import { getStoredUser } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { extractCVText } from "@/lib/cvAnalyzer";
 
 const Jobs = () => {
+  const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [myApplications, setMyApplications] = useState<string[]>([]);
+  const [applyingJobId, setApplyingJobId] = useState<string | null>(null);
+  const [pendingApplyJobId, setPendingApplyJobId] = useState<string | null>(null);
+  const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [selectedCvFile, setSelectedCvFile] = useState<File | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const user = getStoredUser();
+  const isCandidate = user?.role === "candidat";
 
   useEffect(() => {
     const loadJobs = async () => {
       try {
-        const result = await api.getJobs();
+        const [jobsResult, applicationsResult] = await Promise.all([
+          api.getJobs(),
+          isCandidate ? api.getMyApplications() : Promise.resolve({ applications: [] }),
+        ]);
         setJobs(
-          result.jobs.map((job) => ({
+          jobsResult.jobs.map((job) => ({
             id: job.id,
             title: job.title,
             company: job.company,
@@ -34,12 +56,57 @@ const Jobs = () => {
             status: job.status,
           }))
         );
+        if (isCandidate) {
+          setMyApplications(applicationsResult.applications.map((application) => application.jobId));
+        }
       } catch {
         setJobs([]);
       }
     };
     void loadJobs();
-  }, []);
+  }, [isCandidate]);
+
+  const handleApply = async (jobId: string) => {
+    if (!isCandidate) return;
+    setPendingApplyJobId(jobId);
+    setSelectedCvFile(null);
+    setIsApplyDialogOpen(true);
+  };
+
+  const handleCvSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    setSelectedCvFile(event.target.files?.[0] || null);
+  };
+
+  const submitApplicationWithCv = async () => {
+    const jobId = pendingApplyJobId;
+    const file = selectedCvFile;
+    if (!file || !jobId) return;
+    try {
+      setApplyingJobId(jobId);
+      const cvText = await extractCVText(file);
+      await api.applyToJob({
+        jobId,
+        cvPath: file.name,
+        cvText: cvText.slice(0, 100000),
+      });
+      setMyApplications((prev) => (prev.includes(jobId) ? prev : [...prev, jobId]));
+      toast({
+        title: "Application sent",
+        description: "Your CV was uploaded and your application was submitted successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Application failed",
+        description: error instanceof Error ? error.message : "Could not apply to this job.",
+        variant: "destructive",
+      });
+    } finally {
+      setApplyingJobId(null);
+      setPendingApplyJobId(null);
+      setSelectedCvFile(null);
+      setIsApplyDialogOpen(false);
+    }
+  };
 
   const filteredJobs = jobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(search.toLowerCase()) || job.company.toLowerCase().includes(search.toLowerCase());
@@ -89,7 +156,23 @@ const Jobs = () => {
           {/* Results */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredJobs.map(job => (
-              <JobCard key={job.id} job={job} />
+              <JobCard
+                key={job.id}
+                job={job}
+                onApply={isCandidate ? handleApply : undefined}
+                applyDisabled={
+                  isCandidate ? applyingJobId === job.id || myApplications.includes(job.id) : false
+                }
+                applyLabel={
+                  isCandidate
+                    ? myApplications.includes(job.id)
+                      ? "Applied"
+                      : applyingJobId === job.id
+                        ? "Applying..."
+                        : "Apply"
+                    : undefined
+                }
+              />
             ))}
           </div>
 
@@ -101,6 +184,28 @@ const Jobs = () => {
           )}
         </div>
       </div>
+      <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload CV to apply</DialogTitle>
+            <DialogDescription>
+              Select your CV file (PDF, DOCX, or TXT) to submit this application.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="file" accept=".pdf,.docx,.txt" onChange={handleCvSelected} />
+          {selectedCvFile && (
+            <p className="text-sm text-muted-foreground">Selected: {selectedCvFile.name}</p>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => void submitApplicationWithCv()}
+              disabled={!selectedCvFile || (pendingApplyJobId !== null && applyingJobId === pendingApplyJobId)}
+            >
+              {pendingApplyJobId !== null && applyingJobId === pendingApplyJobId ? "Applying..." : "Apply Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Footer />
     </div>
   );

@@ -12,6 +12,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import StatCard from "@/components/StatCard";
 import CandidateCard from "@/components/CandidateCard";
 import JobCard from "@/components/JobCard";
@@ -29,9 +39,9 @@ import {
   Plus,
   LogOut,
   Bell,
-  Sparkles,
+  Trash2,
+  Pencil,
 } from "lucide-react";
-import { CvAnalyzerPanel } from "@/components/cv-analyzer/CvAnalyzerPanel";
 import { analyticsData, type Candidate } from "@/data/mockData";
 import { Link } from "react-router-dom";
 import { api, type ApiJob } from "@/lib/api";
@@ -65,7 +75,21 @@ const RecruiterDashboard = () => {
   const [selectedJob, setSelectedJob] = useState("");
   const [initials, setInitials] = useState("RC");
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const [jobToDelete, setJobToDelete] = useState<ApiJob | null>(null);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [form, setForm] = useState({
+    title: "",
+    company: "",
+    location: "",
+    type: "Full-time" as ApiJob["type"],
+    salary: "",
+    description: "",
+    requirements: "",
+  });
+  const [editForm, setEditForm] = useState({
     title: "",
     company: "",
     location: "",
@@ -223,6 +247,83 @@ const RecruiterDashboard = () => {
     if (!selectedJob) return true;
     return candidate.jobId === selectedJob;
   });
+
+  const handleDeleteJob = async (jobId: string) => {
+    try {
+      setDeletingJobId(jobId);
+      await api.deleteJob(jobId);
+      const remainingJobs = jobs.filter((job) => job.id !== jobId);
+      setJobs(remainingJobs);
+      setCandidates((prev) => prev.filter((item) => item.jobId !== jobId));
+      if (selectedJob === jobId) {
+        setSelectedJob(remainingJobs[0]?.id || "");
+      }
+      toast({
+        title: "Job deleted",
+        description: "The job post and its applications were removed.",
+      });
+    } catch (error) {
+      toast({
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Could not delete this job.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingJobId(null);
+      setJobToDelete(null);
+    }
+  };
+
+  const openEditDialog = (job: ApiJob) => {
+    setEditingJobId(job.id);
+    setEditForm({
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      type: job.type,
+      salary: job.salary,
+      description: job.description,
+      requirements: job.requirements.join(", "),
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateJob = async () => {
+    if (!editingJobId) return;
+    const requirements = editForm.requirements
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    try {
+      setIsUpdating(true);
+      const result = await api.updateJob(editingJobId, {
+        title: editForm.title.trim(),
+        company: editForm.company.trim(),
+        location: editForm.location.trim(),
+        type: editForm.type,
+        salary: editForm.salary.trim(),
+        description: editForm.description.trim(),
+        requirements,
+      });
+      setJobs((prev) => prev.map((job) => (job.id === editingJobId ? result.job : job)));
+      setCandidates((prev) => prev.filter((item) => item.jobId !== editingJobId));
+      setIsEditDialogOpen(false);
+      setEditingJobId(null);
+      toast({
+        title: "Job updated",
+        description: "Your job post was updated. Candidates can apply again with fresh CV submissions.",
+      });
+    } catch (error) {
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "Could not update this job.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -403,20 +504,12 @@ const RecruiterDashboard = () => {
           />
         </div>
 
-        <Tabs defaultValue="cv-analyzer" className="space-y-6">
+        <Tabs defaultValue="candidates" className="space-y-6">
           <TabsList className="flex flex-wrap h-auto gap-1">
-            <TabsTrigger value="cv-analyzer" className="gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              CV Analyzer
-            </TabsTrigger>
             <TabsTrigger value="candidates">AI-Ranked Candidates</TabsTrigger>
             <TabsTrigger value="jobs">My Jobs</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="cv-analyzer">
-            <CvAnalyzerPanel />
-          </TabsContent>
 
           <TabsContent value="candidates">
             <div className="mb-4">
@@ -452,11 +545,24 @@ const RecruiterDashboard = () => {
           <TabsContent value="jobs">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {jobs.map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={mapApiJobToUiJob(job)}
-                  showApply={false}
-                />
+                <Card key={job.id} className="p-4 space-y-3">
+                  <JobCard job={mapApiJobToUiJob(job)} showApply={false} />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openEditDialog(job)}>
+                      <Pencil className="w-4 h-4 mr-1" />
+                      Update
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deletingJobId === job.id}
+                      onClick={() => setJobToDelete(job)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      {deletingJobId === job.id ? "Deleting..." : "Delete Job"}
+                    </Button>
+                  </div>
+                </Card>
               ))}
             </div>
           </TabsContent>
@@ -471,6 +577,97 @@ const RecruiterDashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Update Job Posting</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <label className="text-sm font-medium">Job Title</label>
+              <Input
+                className="mt-1"
+                value={editForm.title}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Company</label>
+              <Input
+                className="mt-1"
+                value={editForm.company}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, company: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Location</label>
+                <Input
+                  className="mt-1"
+                  value={editForm.location}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, location: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Salary Range</label>
+                <Input
+                  className="mt-1"
+                  value={editForm.salary}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, salary: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Textarea
+                className="mt-1"
+                rows={4}
+                value={editForm.description}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, description: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Requirements (comma-separated)</label>
+              <Input
+                className="mt-1"
+                value={editForm.requirements}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, requirements: e.target.value }))
+                }
+              />
+            </div>
+            <Button className="w-full" onClick={handleUpdateJob} disabled={isUpdating}>
+              {isUpdating ? "Updating..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={Boolean(jobToDelete)} onOpenChange={(open) => !open && setJobToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job Post</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Are you sure you want to delete "${jobToDelete?.title || "this job"}"? This will also remove related applications.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (jobToDelete) {
+                  void handleDeleteJob(jobToDelete.id);
+                }
+              }}
+            >
+              Confirm Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

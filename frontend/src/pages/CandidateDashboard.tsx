@@ -1,17 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import StatCard from "@/components/StatCard";
 import JobCard from "@/components/JobCard";
-import { Brain, FileText, Briefcase, Star, Upload, LogOut, Search, Bell } from "lucide-react";
+import { Brain, FileText, Briefcase, Star, LogOut, Search, Bell } from "lucide-react";
 import type { Job } from "@/data/mockData";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAppSignOut } from "@/hooks/useAppSignOut";
+import { extractCVText } from "@/lib/cvAnalyzer";
 
 const statusColors: Record<string, string> = {
   pending: "bg-muted text-muted-foreground",
@@ -40,6 +49,9 @@ const CandidateDashboard = () => {
     }>
   >([]);
   const [applyingJobId, setApplyingJobId] = useState<string | null>(null);
+  const [pendingApplyJobId, setPendingApplyJobId] = useState<string | null>(null);
+  const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [selectedCvFile, setSelectedCvFile] = useState<File | null>(null);
 
   const loadData = async () => {
     const [me, jobsResult, applicationsResult] = await Promise.all([
@@ -120,13 +132,31 @@ const CandidateDashboard = () => {
   };
 
   const handleApply = async (jobId: string) => {
+    setPendingApplyJobId(jobId);
+    setSelectedCvFile(null);
+    setIsApplyDialogOpen(true);
+  };
+
+  const handleCvSelectedForApply = async (event: ChangeEvent<HTMLInputElement>) => {
+    setSelectedCvFile(event.target.files?.[0] || null);
+  };
+
+  const submitApplicationWithCv = async () => {
+    const file = selectedCvFile;
+    const jobId = pendingApplyJobId;
+    if (!file || !jobId) return;
     try {
       setApplyingJobId(jobId);
-      await api.applyToJob(jobId);
+      const cvText = await extractCVText(file);
+      await api.applyToJob({
+        jobId,
+        cvPath: file.name,
+        cvText: cvText.slice(0, 100000),
+      });
       await loadData();
       toast({
         title: "Application sent",
-        description: "Your application was saved successfully.",
+        description: "Your CV was uploaded and your application was saved successfully.",
       });
     } catch (error) {
       toast({
@@ -136,6 +166,9 @@ const CandidateDashboard = () => {
       });
     } finally {
       setApplyingJobId(null);
+      setPendingApplyJobId(null);
+      setSelectedCvFile(null);
+      setIsApplyDialogOpen(false);
     }
   };
 
@@ -187,7 +220,7 @@ const CandidateDashboard = () => {
           <TabsList>
             <TabsTrigger value="applications">My Applications</TabsTrigger>
             <TabsTrigger value="discover">Discover Jobs</TabsTrigger>
-            <TabsTrigger value="profile">Profile & CV</TabsTrigger>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
           </TabsList>
 
           <TabsContent value="applications">
@@ -226,12 +259,10 @@ const CandidateDashboard = () => {
 
           <TabsContent value="profile">
             <Card className="p-8 max-w-2xl">
-              <h3 className="font-display font-semibold text-lg text-foreground mb-6">Upload Your CV</h3>
-              <div className="border-2 border-dashed border-border rounded-xl p-12 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-4" />
-                <p className="text-foreground font-medium">Drop your CV here or click to upload</p>
-                <p className="text-sm text-muted-foreground mt-1">PDF or DOCX, max 10MB</p>
-              </div>
+              <h3 className="font-display font-semibold text-lg text-foreground mb-6">Profile</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                CV upload is requested when you click Apply on a job. The uploaded CV is saved with that application and scored automatically by AI.
+              </p>
               <div className="mt-6 space-y-4">
                 <div>
                   <label className="text-sm font-medium text-foreground">Full Name</label>
@@ -253,6 +284,28 @@ const CandidateDashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
+      <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload CV to apply</DialogTitle>
+            <DialogDescription>
+              Select your CV file (PDF, DOCX, or TXT) to apply for this job.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="file" accept=".pdf,.docx,.txt" onChange={handleCvSelectedForApply} />
+          {selectedCvFile && (
+            <p className="text-sm text-muted-foreground">Selected: {selectedCvFile.name}</p>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => void submitApplicationWithCv()}
+              disabled={!selectedCvFile || (pendingApplyJobId !== null && applyingJobId === pendingApplyJobId)}
+            >
+              {pendingApplyJobId !== null && applyingJobId === pendingApplyJobId ? "Applying..." : "Apply Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

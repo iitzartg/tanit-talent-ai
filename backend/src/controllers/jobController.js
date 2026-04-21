@@ -62,7 +62,76 @@ const createJob = async (req, res, next) => {
   }
 };
 
+const updateJob = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { title, company, location, type, salary, description, requirements, status } = req.body;
+    const job = await Job.findById(id);
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found." });
+    }
+
+    if (req.user.role !== "admin" && String(job.recruiterId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "You can only update your own job posts." });
+    }
+
+    const normalizedRequirements = Array.isArray(requirements)
+      ? requirements.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+
+    job.title = title;
+    job.company = company;
+    job.location = location;
+    job.type = type;
+    job.salary = salary;
+    job.description = description;
+    job.requirements = normalizedRequirements;
+    if (status) {
+      job.status = status;
+    }
+    await job.save();
+    await Application.deleteMany({ jobId: job._id });
+
+    return res.status(200).json({
+      message: "Job updated successfully. Previous applications were reset, candidates can apply again.",
+      job: {
+        ...formatJob(job),
+        applicants: 0,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const deleteJob = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const job = await Job.findById(id);
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found." });
+    }
+
+    if (req.user.role !== "admin" && String(job.recruiterId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "You can only delete your own job posts." });
+    }
+
+    await Promise.all([
+      Job.deleteOne({ _id: job._id }),
+      Application.deleteMany({ jobId: job._id }),
+    ]);
+
+    return res.status(200).json({ message: "Job deleted successfully." });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   listJobs,
   createJob,
+  updateJob,
+  deleteJob,
 };

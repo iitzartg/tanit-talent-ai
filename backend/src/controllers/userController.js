@@ -24,7 +24,7 @@ const getCurrentUserProfile = async (req, res, next) => {
  */
 const updateCurrentUserProfile = async (req, res, next) => {
   try {
-    const { name, bio, skills, cvPath } = req.body;
+    const { name, bio, skills, cvPath, cvText } = req.body;
 
     if (name) {
       req.user.name = name;
@@ -34,6 +34,7 @@ const updateCurrentUserProfile = async (req, res, next) => {
     const updatePayload = {};
     if (typeof bio === "string") updatePayload.bio = bio;
     if (typeof cvPath === "string") updatePayload.cvPath = cvPath;
+    if (typeof cvText === "string") updatePayload.cvText = cvText;
     if (Array.isArray(skills)) {
       updatePayload.skills = skills.map((skill) => String(skill).trim()).filter(Boolean);
     }
@@ -138,7 +139,7 @@ const getUserById = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, email, role, bio, skills, cvPath } = req.body;
+    const { name, email, role, bio, skills, cvPath, cvText } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
@@ -164,6 +165,7 @@ const updateUser = async (req, res, next) => {
       profileUpdate.skills = skills.map((skill) => String(skill).trim()).filter(Boolean);
     }
     if (typeof cvPath === "string") profileUpdate.cvPath = cvPath;
+    if (typeof cvText === "string") profileUpdate.cvText = cvText;
 
     const profile = await Profile.findOneAndUpdate(
       { userId: user._id },

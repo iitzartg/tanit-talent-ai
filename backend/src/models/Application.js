@@ -25,6 +25,17 @@ const applicationSchema = new mongoose.Schema(
       max: 1,
       default: 0,
     },
+    cvPath: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    cvTextSnapshot: {
+      type: String,
+      trim: true,
+      maxlength: 100000,
+      default: "",
+    },
   },
   {
     timestamps: true,

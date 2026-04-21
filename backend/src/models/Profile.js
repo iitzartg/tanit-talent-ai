@@ -23,6 +23,12 @@ const profileSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    cvText: {
+      type: String,
+      trim: true,
+      maxlength: 100000,
+      default: "",
+    },
   },
   {
     timestamps: { createdAt: false, updatedAt: true },
