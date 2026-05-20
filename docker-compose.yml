@@ -6,6 +6,7 @@ services:
     container_name: tanit_backend
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       PORT: 5001
       MONGO_URI: ${MONGO_URI:-mongodb+srv://artgma19_db_user:t6fDwUj1Sk0F34Mv@tanit-ai.56wx6sk.mongodb.net/?appName=tanit-ai}
       JWT_SECRET: ${JWT_SECRET:-replace_with_a_strong_random_secret}
