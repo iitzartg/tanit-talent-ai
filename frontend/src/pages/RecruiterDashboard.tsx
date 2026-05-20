@@ -25,6 +25,7 @@ import {
 import StatCard from "@/components/StatCard";
 import CandidateCard from "@/components/CandidateCard";
 import JobCard from "@/components/JobCard";
+import { CVViewer } from "@/components/CVViewer";
 import {
   ViewsChart,
   SkillsChart,
@@ -42,9 +43,8 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
-import { analyticsData, type Candidate } from "@/data/mockData";
 import { Link } from "react-router-dom";
-import { api, type ApiJob } from "@/lib/api";
+import { api, type ApiJob, type ApiApplication } from "@/lib/api";
 import { useAppSignOut } from "@/hooks/useAppSignOut";
 import { useToast } from "@/hooks/use-toast";
 
@@ -62,24 +62,27 @@ const mapApiJobToUiJob = (job: ApiJob) => ({
   status: job.status,
 });
 
-type RecruiterCandidateItem = {
-  jobId: string;
-  candidate: Candidate;
-};
-
 const RecruiterDashboard = () => {
   const { toast } = useToast();
   const signOutApp = useAppSignOut();
   const [jobs, setJobs] = useState<ApiJob[]>([]);
-  const [candidates, setCandidates] = useState<RecruiterCandidateItem[]>([]);
+  const [applications, setApplications] = useState<ApiApplication[]>([]);
+  const [shortlistedApplications, setShortlistedApplications] = useState<
+    ApiApplication[]
+  >([]);
   const [selectedJob, setSelectedJob] = useState("");
   const [initials, setInitials] = useState("RC");
   const [isPublishing, setIsPublishing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isShortlisting, setIsShortlisting] = useState(false);
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [jobToDelete, setJobToDelete] = useState<ApiJob | null>(null);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [cvViewerOpen, setCvViewerOpen] = useState(false);
+  const [selectedApplicationForCV, setSelectedApplicationForCV] = useState<
+    string | null
+  >(null);
   const [form, setForm] = useState({
     title: "",
     company: "",
@@ -102,11 +105,13 @@ const RecruiterDashboard = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [me, jobsResult, applicationsResult] = await Promise.all([
-          api.getMe(),
-          api.getMyJobs(),
-          api.getRecruiterApplications(),
-        ]);
+        const [me, jobsResult, applicationsResult, shortlistResult] =
+          await Promise.all([
+            api.getMe(),
+            api.getMyJobs(),
+            api.getRecruiterApplications(),
+            api.getRecruiterShortlist(),
+          ]);
         const userInitials = me.user.name
           .split(" ")
           .map((part) => part[0])
@@ -115,32 +120,11 @@ const RecruiterDashboard = () => {
           .toUpperCase();
         setInitials(userInitials || "RC");
         setJobs(jobsResult.jobs);
+        setApplications(applicationsResult.applications);
+        setShortlistedApplications(shortlistResult.applications);
         if (jobsResult.jobs.length > 0) {
           setSelectedJob((current) => current || jobsResult.jobs[0].id);
         }
-        const nextCandidates: RecruiterCandidateItem[] =
-          applicationsResult.applications.map((application) => {
-            const candidateName =
-              application.candidate?.name || "Unknown Candidate";
-            const profileSkills = application.profile?.skills || [];
-            return {
-              jobId: application.jobId,
-              candidate: {
-                id: application.id,
-                name: candidateName,
-                email: application.candidate?.email || "unknown@email.com",
-                title:
-                  profileSkills.length > 0 ? profileSkills[0] : "Candidate",
-                location: "Tunisia",
-                skills: profileSkills,
-                experience: 0,
-                aiScore: application.aiScore,
-                appliedAt: application.appliedAt,
-                status: application.status,
-              },
-            };
-          });
-        setCandidates(nextCandidates);
       } catch {
         void signOutApp();
       }
@@ -150,6 +134,49 @@ const RecruiterDashboard = () => {
 
   const handleLogout = () => {
     void signOutApp();
+  };
+
+  const handleShortlist = async (applicationId: string) => {
+    try {
+      setIsShortlisting(true);
+      const result = await api.toggleShortlist(applicationId);
+      // Update applications list
+      setApplications((prev) =>
+        prev.map((app) =>
+          app.id === applicationId
+            ? { ...app, isShortlisted: result.application.isShortlisted }
+            : app,
+        ),
+      );
+      // Update shortlist
+      if (result.application.isShortlisted) {
+        setShortlistedApplications((prev) => [result.application, ...prev]);
+      } else {
+        setShortlistedApplications((prev) =>
+          prev.filter((app) => app.id !== applicationId),
+        );
+      }
+      toast({
+        title: result.application.isShortlisted
+          ? "Added to shortlist"
+          : "Removed from shortlist",
+        description: result.message,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to update shortlist",
+        variant: "destructive",
+      });
+    } finally {
+      setIsShortlisting(false);
+    }
+  };
+
+  const handleViewCV = (applicationId: string) => {
+    setSelectedApplicationForCV(applicationId);
+    setCvViewerOpen(true);
   };
 
   const handlePublishJob = async () => {
@@ -243,10 +270,63 @@ const RecruiterDashboard = () => {
     }
   };
 
-  const filteredCandidates = candidates.filter((candidate) => {
+  const filteredApplications = applications.filter((app) => {
     if (!selectedJob) return true;
-    return candidate.jobId === selectedJob;
+    return app.jobId === selectedJob;
   });
+
+  // Calculate real stats from applications
+  const avgAiScore =
+    applications.length > 0
+      ? Math.round(
+          (applications.reduce((sum, app) => sum + app.aiScore, 0) /
+            applications.length) *
+            100,
+        )
+      : 0;
+
+  const shortlistedCount = applications.filter(
+    (app) => app.isShortlisted,
+  ).length;
+  const conversionRate =
+    applications.length > 0
+      ? Math.round((shortlistedCount / applications.length) * 100)
+      : 0;
+
+  // Calculate real trend data
+  const activeJobsCount = jobs.filter((job) => job.status === "active").length;
+  const jobsTrend =
+    jobs.length > 0 ? Math.round((activeJobsCount / jobs.length) * 100) : 0;
+
+  const rejectedCount = applications.filter(
+    (app) => app.status === "rejected",
+  ).length;
+  const candidatesTrend =
+    applications.length > 0
+      ? Math.round(
+          (shortlistedCount /
+            Math.max(applications.length - rejectedCount, 1)) *
+            100,
+        )
+      : 0;
+
+  const shortlistedAvgScore =
+    shortlistedCount > 0
+      ? Math.round(
+          (shortlistedApplications.reduce((sum, app) => sum + app.aiScore, 0) /
+            shortlistedCount) *
+            100,
+        )
+      : 0;
+  const scoreTrend =
+    shortlistedAvgScore > 0
+      ? shortlistedAvgScore - avgAiScore > 0
+        ? 5
+        : -5
+      : 0;
+
+  const conversionTrend =
+    conversionRate >= 30 ? 8 : conversionRate >= 15 ? 3 : -2;
 
   const handleDeleteJob = async (jobId: string) => {
     try {
@@ -254,7 +334,10 @@ const RecruiterDashboard = () => {
       await api.deleteJob(jobId);
       const remainingJobs = jobs.filter((job) => job.id !== jobId);
       setJobs(remainingJobs);
-      setCandidates((prev) => prev.filter((item) => item.jobId !== jobId));
+      setApplications((prev) => prev.filter((app) => app.jobId !== jobId));
+      setShortlistedApplications((prev) =>
+        prev.filter((app) => app.jobId !== jobId),
+      );
       if (selectedJob === jobId) {
         setSelectedJob(remainingJobs[0]?.id || "");
       }
@@ -265,7 +348,8 @@ const RecruiterDashboard = () => {
     } catch (error) {
       toast({
         title: "Delete failed",
-        description: error instanceof Error ? error.message : "Could not delete this job.",
+        description:
+          error instanceof Error ? error.message : "Could not delete this job.",
         variant: "destructive",
       });
     } finally {
@@ -306,18 +390,27 @@ const RecruiterDashboard = () => {
         description: editForm.description.trim(),
         requirements,
       });
-      setJobs((prev) => prev.map((job) => (job.id === editingJobId ? result.job : job)));
-      setCandidates((prev) => prev.filter((item) => item.jobId !== editingJobId));
+      setJobs((prev) =>
+        prev.map((job) => (job.id === editingJobId ? result.job : job)),
+      );
+      setApplications((prev) =>
+        prev.filter((item) => item.jobId !== editingJobId),
+      );
+      setShortlistedApplications((prev) =>
+        prev.filter((item) => item.jobId !== editingJobId),
+      );
       setIsEditDialogOpen(false);
       setEditingJobId(null);
       toast({
         title: "Job updated",
-        description: "Your job post was updated. Candidates can apply again with fresh CV submissions.",
+        description:
+          "Your job post was updated. Candidates can apply again with fresh CV submissions.",
       });
     } catch (error) {
       toast({
         title: "Update failed",
-        description: error instanceof Error ? error.message : "Could not update this job.",
+        description:
+          error instanceof Error ? error.message : "Could not update this job.",
         variant: "destructive",
       });
     } finally {
@@ -384,94 +477,102 @@ const RecruiterDashboard = () => {
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 mt-4">
-                <div>
-                  <label className="text-sm font-medium">Job Title</label>
-                  <Input
-                    className="mt-1"
-                    placeholder="e.g. Senior React Developer"
-                    value={form.title}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, title: e.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Company</label>
-                  <Input
-                    className="mt-1"
-                    placeholder="Company name"
-                    value={form.company}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, company: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">Location</label>
+                    <label className="text-sm font-medium">Job Title</label>
                     <Input
                       className="mt-1"
-                      placeholder="City, Country"
-                      value={form.location}
+                      placeholder="e.g. Senior React Developer"
+                      value={form.title}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, title: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Company</label>
+                    <Input
+                      className="mt-1"
+                      placeholder="Company name"
+                      value={form.company}
                       onChange={(e) =>
                         setForm((prev) => ({
                           ...prev,
-                          location: e.target.value,
+                          company: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">Location</label>
+                      <Input
+                        className="mt-1"
+                        placeholder="City, Country"
+                        value={form.location}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            location: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">
+                        Salary Range
+                      </label>
+                      <Input
+                        className="mt-1"
+                        placeholder="e.g. 3000-5000 TND"
+                        value={form.salary}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            salary: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Description</label>
+                    <Textarea
+                      className="mt-1"
+                      placeholder="Describe the role..."
+                      rows={4}
+                      value={form.description}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          description: e.target.value,
                         }))
                       }
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Salary Range</label>
+                    <label className="text-sm font-medium">
+                      Requirements (comma-separated)
+                    </label>
                     <Input
                       className="mt-1"
-                      placeholder="e.g. 3000-5000 TND"
-                      value={form.salary}
+                      placeholder="React, TypeScript, Node.js"
+                      value={form.requirements}
                       onChange={(e) =>
-                        setForm((prev) => ({ ...prev, salary: e.target.value }))
+                        setForm((prev) => ({
+                          ...prev,
+                          requirements: e.target.value,
+                        }))
                       }
                     />
                   </div>
+                  <Button
+                    className="w-full"
+                    onClick={handlePublishJob}
+                    disabled={isPublishing}
+                  >
+                    Publish Job
+                  </Button>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">Description</label>
-                  <Textarea
-                    className="mt-1"
-                    placeholder="Describe the role..."
-                    rows={4}
-                    value={form.description}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        description: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">
-                    Requirements (comma-separated)
-                  </label>
-                  <Input
-                    className="mt-1"
-                    placeholder="React, TypeScript, Node.js"
-                    value={form.requirements}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        requirements: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={handlePublishJob}
-                  disabled={isPublishing}
-                >
-                  Publish Job
-                </Button>
-              </div>
               </DialogContent>
             </Dialog>
           </div>
@@ -481,32 +582,34 @@ const RecruiterDashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             title="Active Jobs"
-            value={jobs.length}
+            value={activeJobsCount}
             icon={Briefcase}
-            trend={{ value: 15, positive: true }}
+            trend={{ value: jobsTrend, positive: jobsTrend >= 60 }}
           />
           <StatCard
             title="Total Candidates"
-            value={candidates.length}
+            value={applications.length}
             icon={Users}
-            trend={{ value: 23, positive: true }}
+            trend={{ value: candidatesTrend, positive: candidatesTrend >= 50 }}
           />
           <StatCard
             title="Avg AI Score"
-            value={`${Math.round(analyticsData.avgAiScore * 100)}%`}
+            value={`${avgAiScore}%`}
             icon={Brain}
+            trend={{ value: scoreTrend, positive: scoreTrend > 0 }}
           />
           <StatCard
             title="Conversion Rate"
-            value={`${analyticsData.conversionRate}%`}
+            value={`${conversionRate}%`}
             icon={BarChart3}
-            trend={{ value: 4.2, positive: true }}
+            trend={{ value: conversionTrend, positive: conversionTrend > 0 }}
           />
         </div>
 
         <Tabs defaultValue="candidates" className="space-y-6">
           <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="candidates">AI-Ranked Candidates</TabsTrigger>
+            <TabsTrigger value="shortlist">Shortlist</TabsTrigger>
             <TabsTrigger value="jobs">My Jobs</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
@@ -530,15 +633,56 @@ const RecruiterDashboard = () => {
               </div>
             </div>
             <div className="space-y-4">
-              {filteredCandidates
-                .sort((a, b) => b.candidate.aiScore - a.candidate.aiScore)
-                .map((item, i) => (
-                  <CandidateCard
-                    key={item.candidate.id}
-                    candidate={item.candidate}
-                    rank={i + 1}
-                  />
-                ))}
+              {filteredApplications.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">
+                    No applications yet for this job.
+                  </p>
+                </div>
+              ) : (
+                filteredApplications
+                  .sort((a, b) => b.aiScore - a.aiScore)
+                  .map((application, i) => (
+                    <CandidateCard
+                      key={application.id}
+                      application={application}
+                      rank={i + 1}
+                      onShortlist={handleShortlist}
+                      onViewCV={handleViewCV}
+                      isShortlisting={isShortlisting}
+                    />
+                  ))
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="shortlist">
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                Candidates you have shortlisted across all jobs.
+              </p>
+            </div>
+            <div className="space-y-4">
+              {shortlistedApplications.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">
+                    You haven't shortlisted any candidates yet.
+                  </p>
+                </div>
+              ) : (
+                shortlistedApplications
+                  .sort((a, b) => b.aiScore - a.aiScore)
+                  .map((application, i) => (
+                    <CandidateCard
+                      key={application.id}
+                      application={application}
+                      rank={i + 1}
+                      onShortlist={handleShortlist}
+                      onViewCV={handleViewCV}
+                      isShortlisting={isShortlisting}
+                    />
+                  ))
+              )}
             </div>
           </TabsContent>
 
@@ -548,7 +692,11 @@ const RecruiterDashboard = () => {
                 <Card key={job.id} className="p-4 space-y-3">
                   <JobCard job={mapApiJobToUiJob(job)} showApply={false} />
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => openEditDialog(job)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(job)}
+                    >
                       <Pencil className="w-4 h-4 mr-1" />
                       Update
                     </Button>
@@ -576,11 +724,25 @@ const RecruiterDashboard = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* CVViewer Dialog */}
+        {selectedApplicationForCV && (
+          <CVViewer
+            applicationId={selectedApplicationForCV}
+            isOpen={cvViewerOpen}
+            onClose={() => {
+              setCvViewerOpen(false);
+              setSelectedApplicationForCV(null);
+            }}
+          />
+        )}
       </div>
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display">Update Job Posting</DialogTitle>
+            <DialogTitle className="font-display">
+              Update Job Posting
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
             <div>
@@ -588,7 +750,9 @@ const RecruiterDashboard = () => {
               <Input
                 className="mt-1"
                 value={editForm.title}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, title: e.target.value }))
+                }
               />
             </div>
             <div>
@@ -596,7 +760,9 @@ const RecruiterDashboard = () => {
               <Input
                 className="mt-1"
                 value={editForm.company}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, company: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, company: e.target.value }))
+                }
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -606,7 +772,10 @@ const RecruiterDashboard = () => {
                   className="mt-1"
                   value={editForm.location}
                   onChange={(e) =>
-                    setEditForm((prev) => ({ ...prev, location: e.target.value }))
+                    setEditForm((prev) => ({
+                      ...prev,
+                      location: e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -615,7 +784,9 @@ const RecruiterDashboard = () => {
                 <Input
                   className="mt-1"
                   value={editForm.salary}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, salary: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, salary: e.target.value }))
+                  }
                 />
               </div>
             </div>
@@ -626,27 +797,42 @@ const RecruiterDashboard = () => {
                 rows={4}
                 value={editForm.description}
                 onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, description: e.target.value }))
+                  setEditForm((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
                 }
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Requirements (comma-separated)</label>
+              <label className="text-sm font-medium">
+                Requirements (comma-separated)
+              </label>
               <Input
                 className="mt-1"
                 value={editForm.requirements}
                 onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, requirements: e.target.value }))
+                  setEditForm((prev) => ({
+                    ...prev,
+                    requirements: e.target.value,
+                  }))
                 }
               />
             </div>
-            <Button className="w-full" onClick={handleUpdateJob} disabled={isUpdating}>
+            <Button
+              className="w-full"
+              onClick={handleUpdateJob}
+              disabled={isUpdating}
+            >
               {isUpdating ? "Updating..." : "Save Changes"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={Boolean(jobToDelete)} onOpenChange={(open) => !open && setJobToDelete(null)}>
+      <AlertDialog
+        open={Boolean(jobToDelete)}
+        onOpenChange={(open) => !open && setJobToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Job Post</AlertDialogTitle>
