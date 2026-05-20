@@ -43,7 +43,6 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
-import { analyticsData, type Candidate } from "@/data/mockData";
 import { Link } from "react-router-dom";
 import { api, type ApiJob, type ApiApplication } from "@/lib/api";
 import { useAppSignOut } from "@/hooks/useAppSignOut";

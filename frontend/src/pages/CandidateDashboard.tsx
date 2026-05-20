@@ -197,32 +197,48 @@ const CandidateDashboard = () => {
   const appliedJobIds = new Set(applications.map((app) => app.jobId));
 
   // Calculate real trend data for candidate dashboard
-  const shortlistedCount = applications.filter((app) => app.status === "shortlisted").length;
-  const pendingCount = applications.filter((app) => app.status === "pending").length;
-  const rejectedCount = applications.filter((app) => app.status === "rejected").length;
+  const shortlistedCount = applications.filter(
+    (app) => app.status === "shortlisted",
+  ).length;
+  const pendingCount = applications.filter(
+    (app) => app.status === "pending",
+  ).length;
+  const rejectedCount = applications.filter(
+    (app) => app.status === "rejected",
+  ).length;
   const avgAiScore =
     applications.length > 0
-      ? Math.round((applications.reduce((sum, app) => sum + app.aiScore, 0) / applications.length) * 100)
+      ? Math.round(
+          (applications.reduce((sum, app) => sum + app.aiScore, 0) /
+            applications.length) *
+            100,
+        )
       : 0;
 
   // Applications trend: positive if more pending/reviewed than rejected
-  const applicationsTrend = applications.length > 0
-    ? Math.round(((pendingCount + applications.filter((app) => app.status === "reviewed").length) / applications.length) * 100)
-    : 0;
+  const applicationsTrend =
+    applications.length > 0
+      ? Math.round(
+          ((pendingCount +
+            applications.filter((app) => app.status === "reviewed").length) /
+            applications.length) *
+            100,
+        )
+      : 0;
 
   // Shortlist trend: percentage of shortlisted applications
-  const shortlistTrend = applications.length > 0
-    ? Math.round((shortlistedCount / applications.length) * 100)
-    : 0;
+  const shortlistTrend =
+    applications.length > 0
+      ? Math.round((shortlistedCount / applications.length) * 100)
+      : 0;
 
   // AI Score trend: positive if average is above 60%
-  const scoreTrend = avgAiScore >= 60 ? (avgAiScore - 50) : (avgAiScore - 50);
+  const scoreTrend = avgAiScore >= 60 ? avgAiScore - 50 : avgAiScore - 50;
 
   // Open Jobs trend: percentage of active jobs
   const openJobsCount = jobs.filter((job) => job.status === "active").length;
-  const jobsTrend = jobs.length > 0
-    ? Math.round((openJobsCount / jobs.length) * 100)
-    : 0;
+  const jobsTrend =
+    jobs.length > 0 ? Math.round((openJobsCount / jobs.length) * 100) : 0;
 
   const handleRefreshApplications = async () => {
     try {
@@ -305,7 +321,10 @@ const CandidateDashboard = () => {
             title="Applications"
             value={applications.length}
             icon={FileText}
-            trend={{ value: applicationsTrend, positive: applicationsTrend >= 70 }}
+            trend={{
+              value: applicationsTrend,
+              positive: applicationsTrend >= 70,
+            }}
           />
           <StatCard
             title="Shortlisted"
