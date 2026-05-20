@@ -36,10 +36,14 @@ const applicationSchema = new mongoose.Schema(
       maxlength: 100000,
       default: "",
     },
+    isShortlisted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 applicationSchema.index({ jobId: 1, candidateId: 1 }, { unique: true });

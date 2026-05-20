@@ -1,14 +1,29 @@
 import { Card } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
-import { analyticsData } from "@/data/mockData";
 
 const COLORS = ["hsl(174, 62%, 32%)", "hsl(36, 90%, 55%)", "hsl(210, 70%, 50%)", "hsl(152, 60%, 40%)", "hsl(0, 72%, 51%)"];
 
-export const ViewsChart = () => (
+interface MonthlyView {
+  month: string;
+  views: number;
+  applications: number;
+}
+
+interface TopSkill {
+  skill: string;
+  count: number;
+}
+
+interface JobCategory {
+  category: string;
+  count: number;
+}
+
+export const ViewsChart = ({ data }: { data: MonthlyView[] }) => (
   <Card className="p-6">
     <h3 className="font-display font-semibold text-foreground mb-4">Monthly Views & Applications</h3>
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={analyticsData.monthlyViews}>
+      <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(200, 10%, 88%)" />
         <XAxis dataKey="month" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} />
@@ -20,11 +35,11 @@ export const ViewsChart = () => (
   </Card>
 );
 
-export const SkillsChart = () => (
+export const SkillsChart = ({ data }: { data: TopSkill[] }) => (
   <Card className="p-6">
     <h3 className="font-display font-semibold text-foreground mb-4">Top Skills in Demand</h3>
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={analyticsData.topSkills} layout="vertical">
+      <BarChart data={data} layout="vertical">
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(200, 10%, 88%)" />
         <XAxis type="number" tick={{ fontSize: 12 }} />
         <YAxis dataKey="skill" type="category" tick={{ fontSize: 12 }} width={80} />
@@ -35,13 +50,13 @@ export const SkillsChart = () => (
   </Card>
 );
 
-export const CategoryChart = () => (
+export const CategoryChart = ({ data }: { data: JobCategory[] }) => (
   <Card className="p-6">
     <h3 className="font-display font-semibold text-foreground mb-4">Jobs by Category</h3>
     <ResponsiveContainer width="100%" height={300}>
       <PieChart>
-        <Pie data={analyticsData.jobsByCategory} cx="50%" cy="50%" outerRadius={100} dataKey="count" nameKey="category" label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`}>
-          {analyticsData.jobsByCategory.map((_, index) => (
+        <Pie data={data} cx="50%" cy="50%" outerRadius={100} dataKey="count" nameKey="category" label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`}>
+          {data.map((_, index) => (
             <Cell key={index} fill={COLORS[index % COLORS.length]} />
           ))}
         </Pie>
@@ -51,11 +66,11 @@ export const CategoryChart = () => (
   </Card>
 );
 
-export const TrendChart = () => (
+export const TrendChart = ({ data }: { data: MonthlyView[] }) => (
   <Card className="p-6">
     <h3 className="font-display font-semibold text-foreground mb-4">Application Trend</h3>
     <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={analyticsData.monthlyViews}>
+      <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(200, 10%, 88%)" />
         <XAxis dataKey="month" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} />

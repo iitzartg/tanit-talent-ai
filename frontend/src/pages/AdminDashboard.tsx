@@ -6,37 +6,82 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StatCard from "@/components/StatCard";
 import { ViewsChart, SkillsChart, TrendChart, CategoryChart } from "@/components/Charts";
 import { Brain, Users, Briefcase, Shield, BarChart3, Activity, LogOut, Bell } from "lucide-react";
-import { mockCandidates, mockJobs, analyticsData } from "@/data/mockData";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { type AuthUser } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useAppSignOut } from "@/hooks/useAppSignOut";
 
+interface AnalyticsData {
+  totalUsers: number;
+  usersByRole: Record<string, number>;
+  totalJobs: number;
+  jobsByStatus: Record<string, number>;
+  totalApplications: number;
+  applicationsByStatus: Record<string, number>;
+  avgAiScore: number;
+  conversionRate: number;
+  monthlyViews: Array<{ month: string; views: number; applications: number }>;
+  topSkills: Array<{ skill: string; count: number }>;
+  jobsByCategory: Array<{ category: string; count: number }>;
+}
+
+interface SystemHealth {
+  status: string;
+  apiGateway: string;
+  database: string;
+  fileStorage: string;
+  responseTime: number;
+  timestamp: string;
+}
+
 const AdminDashboard = () => {
   const { toast } = useToast();
   const signOutApp = useAppSignOut();
   const [users, setUsers] = useState<Array<AuthUser & { profile: { bio?: string } | null }>>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [loadingHealth, setLoadingHealth] = useState(false);
 
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadData = async () => {
       try {
+        // Load users
         setLoadingUsers(true);
-        const result = await api.getUsers();
-        setUsers(result.users);
+        const usersResult = await api.getUsers();
+        setUsers(usersResult.users);
+
+        // Load analytics
+        setLoadingAnalytics(true);
+        const analyticsResult = await api.getAnalytics();
+        setAnalytics(analyticsResult);
+
+        // Load system health
+        setLoadingHealth(true);
+        const healthResult = await api.getSystemHealth();
+        setSystemHealth(healthResult);
       } catch (error) {
-        await signOutApp();
+        const errorMessage = error instanceof Error ? error.message : "Failed to load data";
         toast({
-          title: "Session expired",
-          description: "Please login as admin again.",
+          title: "Error",
+          description: errorMessage,
           variant: "destructive",
         });
+
+        // If auth error, sign out
+        if (errorMessage.includes("auth") || errorMessage.includes("401")) {
+          await signOutApp();
+        }
       } finally {
         setLoadingUsers(false);
+        setLoadingAnalytics(false);
+        setLoadingHealth(false);
       }
     };
-    void loadUsers();
+
+    void loadData();
   }, [toast, signOutApp]);
 
   const handleLogout = () => {
@@ -84,10 +129,28 @@ const AdminDashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard title="Total Users" value={analyticsData.totalCandidates + 156} icon={Users} trend={{ value: 18, positive: true }} />
-          <StatCard title="Active Jobs" value={analyticsData.totalJobs} icon={Briefcase} />
-          <StatCard title="Applications" value={analyticsData.totalApplications} icon={Activity} trend={{ value: 32, positive: true }} />
-          <StatCard title="Platform Health" value="99.9%" icon={Shield} />
+          <StatCard 
+            title="Total Users" 
+            value={analytics?.totalUsers ?? 0} 
+            icon={Users} 
+            trend={analytics ? { value: Math.round((analytics.usersByRole.candidat || 0) / analytics.totalUsers * 100), positive: true } : undefined} 
+          />
+          <StatCard 
+            title="Active Jobs" 
+            value={analytics?.jobsByStatus.active ?? 0} 
+            icon={Briefcase} 
+          />
+          <StatCard 
+            title="Applications" 
+            value={analytics?.totalApplications ?? 0} 
+            icon={Activity} 
+            trend={analytics ? { value: Math.round(analytics.conversionRate), positive: true } : undefined} 
+          />
+          <StatCard 
+            title="Avg AI Score" 
+            value={`${((analytics?.avgAiScore ?? 0) * 100).toFixed(0)}%`} 
+            icon={Shield} 
+          />
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-6">
@@ -98,12 +161,18 @@ const AdminDashboard = () => {
           </TabsList>
 
           <TabsContent value="analytics">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ViewsChart />
-              <TrendChart />
-              <SkillsChart />
-              <CategoryChart />
-            </div>
+            {loadingAnalytics ? (
+              <div className="text-center py-8 text-muted-foreground">Loading analytics...</div>
+            ) : analytics ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ViewsChart data={analytics.monthlyViews} />
+                <TrendChart data={analytics.monthlyViews} />
+                <SkillsChart data={analytics.topSkills.length > 0 ? analytics.topSkills : [{ skill: "No data", count: 0 }]} />
+                <CategoryChart data={analytics.jobsByCategory.length > 0 ? analytics.jobsByCategory : [{ category: "No data", count: 0 }]} />
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">Failed to load analytics</div>
+            )}
           </TabsContent>
 
           <TabsContent value="users">
@@ -122,7 +191,7 @@ const AdminDashboard = () => {
                       <th className="text-left p-4 text-sm font-medium text-muted-foreground">Name</th>
                       <th className="text-left p-4 text-sm font-medium text-muted-foreground">Role</th>
                       <th className="text-left p-4 text-sm font-medium text-muted-foreground">Status</th>
-                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">AI Score</th>
+                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">Profile</th>
                       <th className="text-right p-4 text-sm font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
@@ -131,6 +200,13 @@ const AdminDashboard = () => {
                       <tr className="border-t border-border hover:bg-muted/30">
                         <td className="p-4 text-sm text-muted-foreground" colSpan={5}>
                           Loading users...
+                        </td>
+                      </tr>
+                    )}
+                    {!loadingUsers && users.length === 0 && (
+                      <tr className="border-t border-border">
+                        <td className="p-4 text-sm text-muted-foreground" colSpan={5}>
+                          No users found
                         </td>
                       </tr>
                     )}
@@ -149,7 +225,7 @@ const AdminDashboard = () => {
                         </td>
                         <td className="p-4"><Badge variant="outline" className="text-xs">{c.role}</Badge></td>
                         <td className="p-4"><Badge className="text-xs bg-success/10 text-success">active</Badge></td>
-                        <td className="p-4 text-sm font-medium">{c.profile?.bio ? "Profile set" : "N/A"}</td>
+                        <td className="p-4 text-sm text-muted-foreground">{c.profile?.bio ? "✓ Completed" : "○ Incomplete"}</td>
                         <td className="p-4 text-right">
                           <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteUser(c.id)}>
                             Delete
@@ -167,29 +243,38 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card className="p-6">
                 <h3 className="font-display font-semibold text-foreground mb-4">System Status</h3>
-                <div className="space-y-3">
-                  {[
-                    { name: "API Gateway", status: "Operational" },
-                    { name: "AI Microservice", status: "Operational" },
-                    { name: "Database (PostgreSQL)", status: "Operational" },
-                    { name: "File Storage", status: "Operational" },
-                  ].map(s => (
-                    <div key={s.name} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                      <span className="text-sm text-foreground">{s.name}</span>
-                      <Badge className="bg-success/10 text-success text-xs">{s.status}</Badge>
-                    </div>
-                  ))}
-                </div>
+                {loadingHealth ? (
+                  <div className="text-sm text-muted-foreground">Loading...</div>
+                ) : systemHealth ? (
+                  <div className="space-y-3">
+                    {[
+                      { name: "API Gateway", status: systemHealth.apiGateway },
+                      { name: "Database", status: systemHealth.database },
+                      { name: "File Storage", status: systemHealth.fileStorage },
+                    ].map(s => (
+                      <div key={s.name} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                        <span className="text-sm text-foreground">{s.name}</span>
+                        <Badge className="bg-success/10 text-success text-xs capitalize">{s.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Failed to load status</div>
+                )}
               </Card>
               <Card className="p-6">
-                <h3 className="font-display font-semibold text-foreground mb-4">Clickstream Analytics</h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Total Events Today</span><span className="font-bold text-foreground">14,892</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Unique Sessions</span><span className="font-bold text-foreground">2,341</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Avg. Session Duration</span><span className="font-bold text-foreground">4m 23s</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Bounce Rate</span><span className="font-bold text-foreground">32.1%</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Most Viewed Job</span><span className="font-bold text-foreground">Senior Dev</span></div>
-                </div>
+                <h3 className="font-display font-semibold text-foreground mb-4">Platform Metrics</h3>
+                {analytics ? (
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Total Users</span><span className="font-bold text-foreground">{analytics.totalUsers}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Active Jobs</span><span className="font-bold text-foreground">{analytics.jobsByStatus.active || 0}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Total Applications</span><span className="font-bold text-foreground">{analytics.totalApplications}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Avg AI Score</span><span className="font-bold text-foreground">{(analytics.avgAiScore * 100).toFixed(0)}%</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Conversion Rate</span><span className="font-bold text-foreground">{analytics.conversionRate.toFixed(1)}%</span></div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Loading...</div>
+                )}
               </Card>
             </div>
           </TabsContent>

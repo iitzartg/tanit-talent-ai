@@ -4,7 +4,9 @@
 
 function formatUser(userDoc) {
   if (!userDoc) return null;
-  const u = userDoc.toObject ? userDoc.toObject({ virtuals: true }) : { ...userDoc };
+  const u = userDoc.toObject
+    ? userDoc.toObject({ virtuals: true })
+    : { ...userDoc };
   return {
     id: String(u._id ?? u.id),
     name: u.name,
@@ -29,7 +31,9 @@ function formatProfile(profileDoc) {
 
 function formatJob(jobDoc) {
   if (!jobDoc) return null;
-  const j = jobDoc.toObject ? jobDoc.toObject({ virtuals: true }) : { ...jobDoc };
+  const j = jobDoc.toObject
+    ? jobDoc.toObject({ virtuals: true })
+    : { ...jobDoc };
   return {
     id: String(j._id ?? j.id),
     recruiterId: String(j.recruiterId),
@@ -47,7 +51,9 @@ function formatJob(jobDoc) {
 
 function formatApplication(applicationDoc) {
   if (!applicationDoc) return null;
-  const a = applicationDoc.toObject ? applicationDoc.toObject({ virtuals: true }) : { ...applicationDoc };
+  const a = applicationDoc.toObject
+    ? applicationDoc.toObject({ virtuals: true })
+    : { ...applicationDoc };
   return {
     id: String(a._id ?? a.id),
     jobId: String(a.jobId),
@@ -55,6 +61,7 @@ function formatApplication(applicationDoc) {
     status: a.status,
     aiScore: typeof a.aiScore === "number" ? a.aiScore : 0,
     cvPath: a.cvPath ?? "",
+    isShortlisted: Boolean(a.isShortlisted),
     appliedAt: a.createdAt,
   };
 }

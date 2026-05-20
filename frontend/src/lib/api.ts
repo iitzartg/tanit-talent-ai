@@ -31,6 +31,7 @@ export interface ApiApplication {
   status: "pending" | "reviewed" | "shortlisted" | "rejected";
   aiScore: number;
   cvPath?: string;
+  isShortlisted?: boolean;
   appliedAt: string;
   job: ApiJob | null;
   candidate?: AuthUser | null;
@@ -50,9 +51,14 @@ interface ApiRequestOptions extends RequestInit {
   auth?: boolean;
 }
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:5001";
+const API_URL =
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  "http://localhost:5001";
 
-async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
 
@@ -71,7 +77,9 @@ async function request<T>(path: string, options: ApiRequestOptions = {}): Promis
       Array.isArray(data?.errors) && data.errors.length > 0
         ? data.errors[0]?.msg || data.errors[0]?.message
         : null;
-    throw new Error(detailedValidationError || data?.message || "Request failed.");
+    throw new Error(
+      detailedValidationError || data?.message || "Request failed.",
+    );
   }
 
   return data as T;
@@ -80,37 +88,64 @@ async function request<T>(path: string, options: ApiRequestOptions = {}): Promis
 export const api = {
   health: () => request<{ status: string; message: string }>("/api/health"),
 
-  register: (payload: { name: string; email: string; password: string; role: UserRole }) =>
-    request<{ message: string; token: string; user: AuthUser }>("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  register: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    role: UserRole;
+  }) =>
+    request<{ message: string; token: string; user: AuthUser }>(
+      "/api/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
 
   login: (payload: { email: string; password: string }) =>
-    request<{ message: string; token: string; user: AuthUser }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    request<{ message: string; token: string; user: AuthUser }>(
+      "/api/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
 
   clerkSync: (clerkSessionJwt: string, body: { role?: UserRole } = {}) =>
-    request<{ message: string; token: string; user: AuthUser }>("/api/auth/clerk-sync", {
-      method: "POST",
-      body: JSON.stringify(body),
-      headers: { Authorization: `Bearer ${clerkSessionJwt}` },
-    }),
+    request<{ message: string; token: string; user: AuthUser }>(
+      "/api/auth/clerk-sync",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { Authorization: `Bearer ${clerkSessionJwt}` },
+      },
+    ),
 
-  getMe: () => request<{ user: AuthUser; profile: ApiProfile | null }>("/api/users/me", { auth: true }),
-
-  updateMe: (payload: { name?: string; bio?: string; skills?: string[]; cvPath?: string; cvText?: string }) =>
-    request<{ message: string; user: AuthUser; profile: ApiProfile | null }>("/api/users/me", {
-      method: "PUT",
+  getMe: () =>
+    request<{ user: AuthUser; profile: ApiProfile | null }>("/api/users/me", {
       auth: true,
-      body: JSON.stringify(payload),
     }),
+
+  updateMe: (payload: {
+    name?: string;
+    bio?: string;
+    skills?: string[];
+    cvPath?: string;
+    cvText?: string;
+  }) =>
+    request<{ message: string; user: AuthUser; profile: ApiProfile | null }>(
+      "/api/users/me",
+      {
+        method: "PUT",
+        auth: true,
+        body: JSON.stringify(payload),
+      },
+    ),
 
   getJobs: () => request<{ jobs: ApiJob[] }>("/api/jobs"),
 
-  getMyJobs: () => request<{ jobs: ApiJob[] }>("/api/jobs/mine", { auth: true }),
+  getMyJobs: () =>
+    request<{ jobs: ApiJob[] }>("/api/jobs/mine", { auth: true }),
 
   createJob: (payload: {
     title: string;
@@ -154,11 +189,14 @@ export const api = {
     }),
 
   applyToJob: (payload: { jobId: string; cvPath: string; cvText: string }) =>
-    request<{ message: string; application: ApiApplication }>("/api/applications", {
-      method: "POST",
-      auth: true,
-      body: JSON.stringify(payload),
-    }),
+    request<{ message: string; application: ApiApplication }>(
+      "/api/applications",
+      {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify(payload),
+      },
+    ),
 
   getMyApplications: () =>
     request<{ applications: ApiApplication[] }>("/api/applications/me", {
@@ -170,27 +208,100 @@ export const api = {
       auth: true,
     }),
 
-  getUsers: () => request<{ users: Array<AuthUser & { profile: ApiProfile | null }> }>("/api/users", { auth: true }),
+  getRecruiterShortlist: () =>
+    request<{ applications: ApiApplication[] }>(
+      "/api/applications/recruiter/shortlist",
+      {
+        auth: true,
+      },
+    ),
+
+  toggleShortlist: (applicationId: string) =>
+    request<{ message: string; application: ApiApplication }>(
+      `/api/applications/${applicationId}/shortlist`,
+      {
+        method: "POST",
+        auth: true,
+      },
+    ),
+
+  getCandidateCV: (applicationId: string) =>
+    request<{
+      cvText: string;
+      candidate: AuthUser;
+      profile: ApiProfile | null;
+      application: ApiApplication;
+    }>(`/api/applications/${applicationId}/cv`, {
+      auth: true,
+    }),
+
+  getUsers: () =>
+    request<{ users: Array<AuthUser & { profile: ApiProfile | null }> }>(
+      "/api/users",
+      { auth: true },
+    ),
   getUserById: (id: string) =>
-    request<{ user: AuthUser; profile: ApiProfile | null }>(`/api/users/${id}`, {
-      auth: true,
-    }),
+    request<{ user: AuthUser; profile: ApiProfile | null }>(
+      `/api/users/${id}`,
+      {
+        auth: true,
+      },
+    ),
   createUser: (payload: UserCrudPayload) =>
-    request<{ message: string; user: AuthUser; profile: ApiProfile | null }>("/api/users", {
-      method: "POST",
-      auth: true,
-      body: JSON.stringify(payload),
-    }),
+    request<{ message: string; user: AuthUser; profile: ApiProfile | null }>(
+      "/api/users",
+      {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify(payload),
+      },
+    ),
   updateUser: (id: string, payload: Partial<UserCrudPayload>) =>
-    request<{ message: string; user: AuthUser; profile: ApiProfile | null }>(`/api/users/${id}`, {
-      method: "PUT",
-      auth: true,
-      body: JSON.stringify(payload),
-    }),
+    request<{ message: string; user: AuthUser; profile: ApiProfile | null }>(
+      `/api/users/${id}`,
+      {
+        method: "PUT",
+        auth: true,
+        body: JSON.stringify(payload),
+      },
+    ),
 
   deleteUser: (id: string) =>
     request<{ message: string }>(`/api/users/${id}`, {
       method: "DELETE",
+      auth: true,
+    }),
+
+  getAnalytics: () =>
+    request<{
+      totalUsers: number;
+      usersByRole: Record<string, number>;
+      totalJobs: number;
+      jobsByStatus: Record<string, number>;
+      totalApplications: number;
+      applicationsByStatus: Record<string, number>;
+      avgAiScore: number;
+      conversionRate: number;
+      monthlyViews: Array<{
+        month: string;
+        views: number;
+        applications: number;
+      }>;
+      topSkills: Array<{ skill: string; count: number }>;
+      jobsByCategory: Array<{ category: string; count: number }>;
+    }>("/api/analytics/dashboard", {
+      auth: true,
+    }),
+
+  getSystemHealth: () =>
+    request<{
+      status: string;
+      apiGateway: string;
+      database: string;
+      fileStorage: string;
+      responseTime: number;
+      timestamp: string;
+    }>("/api/analytics/health", {
       auth: true,
     }),
 };

@@ -14,7 +14,16 @@ import {
 } from "@/components/ui/dialog";
 import StatCard from "@/components/StatCard";
 import JobCard from "@/components/JobCard";
-import { Brain, FileText, Briefcase, Star, LogOut, Search, Bell } from "lucide-react";
+import {
+  Brain,
+  FileText,
+  Briefcase,
+  Star,
+  LogOut,
+  Search,
+  Bell,
+  RefreshCw,
+} from "lucide-react";
 import type { Job } from "@/data/mockData";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -36,6 +45,7 @@ const CandidateDashboard = () => {
   const [bio, setBio] = useState("");
   const [skillsText, setSkillsText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<
     Array<{
@@ -49,7 +59,9 @@ const CandidateDashboard = () => {
     }>
   >([]);
   const [applyingJobId, setApplyingJobId] = useState<string | null>(null);
-  const [pendingApplyJobId, setPendingApplyJobId] = useState<string | null>(null);
+  const [pendingApplyJobId, setPendingApplyJobId] = useState<string | null>(
+    null,
+  );
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
   const [selectedCvFile, setSelectedCvFile] = useState<File | null>(null);
 
@@ -75,7 +87,7 @@ const CandidateDashboard = () => {
         postedAt: job.postedAt,
         applicants: job.applicants,
         status: job.status,
-      }))
+      })),
     );
     setApplications(
       applicationsResult.applications.map((application) => ({
@@ -86,7 +98,7 @@ const CandidateDashboard = () => {
         appliedAt: application.appliedAt,
         status: application.status,
         aiScore: application.aiScore,
-      }))
+      })),
     );
   };
 
@@ -119,11 +131,15 @@ const CandidateDashboard = () => {
         .map((s) => s.trim())
         .filter(Boolean);
       await api.updateMe({ name, bio, skills });
-      toast({ title: "Profile updated", description: "Your profile changes were saved." });
+      toast({
+        title: "Profile updated",
+        description: "Your profile changes were saved.",
+      });
     } catch (error) {
       toast({
         title: "Update failed",
-        description: error instanceof Error ? error.message : "Unable to update profile.",
+        description:
+          error instanceof Error ? error.message : "Unable to update profile.",
         variant: "destructive",
       });
     } finally {
@@ -137,7 +153,9 @@ const CandidateDashboard = () => {
     setIsApplyDialogOpen(true);
   };
 
-  const handleCvSelectedForApply = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleCvSelectedForApply = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
     setSelectedCvFile(event.target.files?.[0] || null);
   };
 
@@ -156,12 +174,16 @@ const CandidateDashboard = () => {
       await loadData();
       toast({
         title: "Application sent",
-        description: "Your CV was uploaded and your application was saved successfully.",
+        description:
+          "Your CV was uploaded and your application was saved successfully.",
       });
     } catch (error) {
       toast({
         title: "Application failed",
-        description: error instanceof Error ? error.message : "Could not apply to this job.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Could not apply to this job.",
         variant: "destructive",
       });
     } finally {
@@ -174,6 +196,67 @@ const CandidateDashboard = () => {
 
   const appliedJobIds = new Set(applications.map((app) => app.jobId));
 
+  // Calculate real trend data for candidate dashboard
+  const shortlistedCount = applications.filter((app) => app.status === "shortlisted").length;
+  const pendingCount = applications.filter((app) => app.status === "pending").length;
+  const rejectedCount = applications.filter((app) => app.status === "rejected").length;
+  const avgAiScore =
+    applications.length > 0
+      ? Math.round((applications.reduce((sum, app) => sum + app.aiScore, 0) / applications.length) * 100)
+      : 0;
+
+  // Applications trend: positive if more pending/reviewed than rejected
+  const applicationsTrend = applications.length > 0
+    ? Math.round(((pendingCount + applications.filter((app) => app.status === "reviewed").length) / applications.length) * 100)
+    : 0;
+
+  // Shortlist trend: percentage of shortlisted applications
+  const shortlistTrend = applications.length > 0
+    ? Math.round((shortlistedCount / applications.length) * 100)
+    : 0;
+
+  // AI Score trend: positive if average is above 60%
+  const scoreTrend = avgAiScore >= 60 ? (avgAiScore - 50) : (avgAiScore - 50);
+
+  // Open Jobs trend: percentage of active jobs
+  const openJobsCount = jobs.filter((job) => job.status === "active").length;
+  const jobsTrend = jobs.length > 0
+    ? Math.round((openJobsCount / jobs.length) * 100)
+    : 0;
+
+  const handleRefreshApplications = async () => {
+    try {
+      setIsRefreshing(true);
+      const applicationsResult = await api.getMyApplications();
+      setApplications(
+        applicationsResult.applications.map((application) => ({
+          id: application.id,
+          jobId: application.jobId,
+          jobTitle: application.job?.title || "Unknown Job",
+          company: application.job?.company || "Unknown Company",
+          appliedAt: application.appliedAt,
+          status: application.status,
+          aiScore: application.aiScore,
+        })),
+      );
+      toast({
+        title: "Refreshed",
+        description: "Your applications have been updated.",
+      });
+    } catch (error) {
+      toast({
+        title: "Refresh failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Could not refresh applications.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Top Bar */}
@@ -183,10 +266,14 @@ const CandidateDashboard = () => {
             <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
               <Brain className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg text-foreground">Tanit-Talent</span>
+            <span className="font-display font-bold text-lg text-foreground">
+              Tanit-Talent
+            </span>
           </Link>
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon"><Bell className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon">
+              <Bell className="w-4 h-4" />
+            </Button>
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-display font-bold text-sm">
               {name
                 .split(" ")
@@ -204,16 +291,40 @@ const CandidateDashboard = () => {
 
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="font-display font-bold text-2xl text-foreground">Welcome back, {name} 👋</h1>
-          <p className="text-muted-foreground text-sm mt-1">Track your applications and discover new opportunities</p>
+          <h1 className="font-display font-bold text-2xl text-foreground">
+            Welcome back, {name} 👋
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Track your applications and discover new opportunities
+          </p>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard title="Applications" value={applications.length} icon={FileText} trend={{ value: 12, positive: true }} />
-          <StatCard title="Shortlisted" value={applications.filter((item) => item.status === "shortlisted").length} icon={Star} />
-          <StatCard title="Avg. AI Score" value={`${Math.round((applications.reduce((sum, item) => sum + item.aiScore, 0) / Math.max(applications.length, 1)) * 100)}%`} icon={Brain} />
-          <StatCard title="Open Jobs" value={jobs.filter((job) => job.status === "active").length} icon={Briefcase} trend={{ value: 8, positive: true }} />
+          <StatCard
+            title="Applications"
+            value={applications.length}
+            icon={FileText}
+            trend={{ value: applicationsTrend, positive: applicationsTrend >= 70 }}
+          />
+          <StatCard
+            title="Shortlisted"
+            value={shortlistedCount}
+            icon={Star}
+            trend={{ value: shortlistTrend, positive: shortlistTrend >= 20 }}
+          />
+          <StatCard
+            title="Avg. AI Score"
+            value={`${avgAiScore}%`}
+            icon={Brain}
+            trend={{ value: scoreTrend, positive: scoreTrend > 0 }}
+          />
+          <StatCard
+            title="Open Jobs"
+            value={openJobsCount}
+            icon={Briefcase}
+            trend={{ value: jobsTrend, positive: jobsTrend >= 50 }}
+          />
         </div>
 
         <Tabs defaultValue="applications" className="space-y-6">
@@ -224,19 +335,46 @@ const CandidateDashboard = () => {
           </TabsList>
 
           <TabsContent value="applications">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-muted-foreground">
+                Your job applications and their status
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshApplications}
+                disabled={isRefreshing}
+              >
+                <RefreshCw
+                  className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+                {isRefreshing ? "Refreshing..." : "Refresh"}
+              </Button>
+            </div>
             <div className="space-y-4">
-              {applications.map(app => (
-                <Card key={app.id} className="p-5 flex items-center justify-between">
+              {applications.map((app) => (
+                <Card
+                  key={app.id}
+                  className="p-5 flex items-center justify-between"
+                >
                   <div>
-                    <h4 className="font-display font-semibold text-foreground">{app.jobTitle}</h4>
-                    <p className="text-sm text-muted-foreground">{app.company} · Applied {app.appliedAt}</p>
+                    <h4 className="font-display font-semibold text-foreground">
+                      {app.jobTitle}
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      {app.company} · Applied {app.appliedAt}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">AI Score</p>
-                      <p className="font-bold text-primary">{Math.round(app.aiScore * 100)}%</p>
+                      <p className="font-bold text-primary">
+                        {Math.round(app.aiScore * 100)}%
+                      </p>
                     </div>
-                    <Badge className={statusColors[app.status]}>{app.status}</Badge>
+                    <Badge className={statusColors[app.status]}>
+                      {app.status}
+                    </Badge>
                   </div>
                 </Card>
               ))}
@@ -245,13 +383,21 @@ const CandidateDashboard = () => {
 
           <TabsContent value="discover">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {jobs.slice(0, 8).map(job => (
+              {jobs.slice(0, 8).map((job) => (
                 <JobCard
                   key={job.id}
                   job={job}
                   onApply={handleApply}
-                  applyDisabled={applyingJobId === job.id || appliedJobIds.has(job.id)}
-                  applyLabel={appliedJobIds.has(job.id) ? "Applied" : applyingJobId === job.id ? "Applying..." : "Apply"}
+                  applyDisabled={
+                    applyingJobId === job.id || appliedJobIds.has(job.id)
+                  }
+                  applyLabel={
+                    appliedJobIds.has(job.id)
+                      ? "Applied"
+                      : applyingJobId === job.id
+                        ? "Applying..."
+                        : "Apply"
+                  }
                 />
               ))}
             </div>
@@ -259,22 +405,44 @@ const CandidateDashboard = () => {
 
           <TabsContent value="profile">
             <Card className="p-8 max-w-2xl">
-              <h3 className="font-display font-semibold text-lg text-foreground mb-6">Profile</h3>
+              <h3 className="font-display font-semibold text-lg text-foreground mb-6">
+                Profile
+              </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                CV upload is requested when you click Apply on a job. The uploaded CV is saved with that application and scored automatically by AI.
+                CV upload is requested when you click Apply on a job. The
+                uploaded CV is saved with that application and scored
+                automatically by AI.
               </p>
               <div className="mt-6 space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-foreground">Full Name</label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+                  <label className="text-sm font-medium text-foreground">
+                    Full Name
+                  </label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Bio</label>
-                  <Input value={bio} onChange={(e) => setBio(e.target.value)} className="mt-1" />
+                  <label className="text-sm font-medium text-foreground">
+                    Bio
+                  </label>
+                  <Input
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Skills (comma separated)</label>
-                  <Input value={skillsText} onChange={(e) => setSkillsText(e.target.value)} className="mt-1" />
+                  <label className="text-sm font-medium text-foreground">
+                    Skills (comma separated)
+                  </label>
+                  <Input
+                    value={skillsText}
+                    onChange={(e) => setSkillsText(e.target.value)}
+                    className="mt-1"
+                  />
                 </div>
                 <Button onClick={handleSaveProfile} disabled={isSaving}>
                   Save Profile
@@ -292,16 +460,28 @@ const CandidateDashboard = () => {
               Select your CV file (PDF, DOCX, or TXT) to apply for this job.
             </DialogDescription>
           </DialogHeader>
-          <input type="file" accept=".pdf,.docx,.txt" onChange={handleCvSelectedForApply} />
+          <input
+            type="file"
+            accept=".pdf,.docx,.txt"
+            onChange={handleCvSelectedForApply}
+          />
           {selectedCvFile && (
-            <p className="text-sm text-muted-foreground">Selected: {selectedCvFile.name}</p>
+            <p className="text-sm text-muted-foreground">
+              Selected: {selectedCvFile.name}
+            </p>
           )}
           <DialogFooter>
             <Button
               onClick={() => void submitApplicationWithCv()}
-              disabled={!selectedCvFile || (pendingApplyJobId !== null && applyingJobId === pendingApplyJobId)}
+              disabled={
+                !selectedCvFile ||
+                (pendingApplyJobId !== null &&
+                  applyingJobId === pendingApplyJobId)
+              }
             >
-              {pendingApplyJobId !== null && applyingJobId === pendingApplyJobId ? "Applying..." : "Apply Now"}
+              {pendingApplyJobId !== null && applyingJobId === pendingApplyJobId
+                ? "Applying..."
+                : "Apply Now"}
             </Button>
           </DialogFooter>
         </DialogContent>
