@@ -1,30 +1,14 @@
 services:
-  mongo:
-    image: mongo:7
-    container_name: tanit_mongo
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: tanit_backend
     restart: unless-stopped
-    depends_on:
-      mongo:
-        condition: service_healthy
     environment:
+      NODE_ENV: production
       PORT: 5001
-      MONGO_URI: mongodb://mongo:27017/espace_utilisateur
+      MONGO_URI: ${MONGO_URI:-mongodb+srv://artgma19_db_user:t6fDwUj1Sk0F34Mv@tanit-ai.56wx6sk.mongodb.net/?appName=tanit-ai}
       JWT_SECRET: ${JWT_SECRET:-replace_with_a_strong_random_secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-sk_test_your_clerk_secret_key}
@@ -45,6 +29,3 @@ services:
       - backend
     ports:
       - "8080:80"
-
-volumes:
-  mongo_data:

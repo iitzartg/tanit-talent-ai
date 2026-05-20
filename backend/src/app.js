@@ -15,7 +15,12 @@ const app = express();
 
 // Global middlewares for security, logging and JSON body parsing.
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === "production" 
+    ? "https://tanit-talent-ai-virid.vercel.app"
+    : "http://localhost:5173",
+  credentials: true
+}));
 app.use(morgan("dev"));
 app.use(express.json());
 
