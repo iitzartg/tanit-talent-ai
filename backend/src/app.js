@@ -29,6 +29,11 @@ app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok", message: "API is healthy." });
 });
 
+// Root route handler.
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "Welcome to the Tanit Talent AI Backend API!" });
+});
+
 // API routes.
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
